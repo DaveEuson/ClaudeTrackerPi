@@ -345,8 +345,8 @@ jobs:
                       yoyu-amoled-boot_app0.bin yoyu-amoled-merged.bin \
                       YoyuCompanion-windows.exe YoyuCompanion-macos \
                       YoyuCompanion-linux SHA256SUMS.txt \
-                      "yoyu-companion_${TAG#v}_amd64.deb" \
-                      "YoyuCompanion-${TAG#v}-x86_64.AppImage"; do
+                      yoyu-companion_amd64.deb \
+                      YoyuCompanion-x86_64.AppImage; do
             if ! echo "$ASSETS" | grep -qx "$want"; then
               echo "::error::Release $TAG is missing asset: $want"
               MISSING=1

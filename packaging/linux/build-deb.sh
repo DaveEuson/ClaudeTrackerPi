@@ -89,6 +89,9 @@ Description: Feed Claude Code usage to a Yoyu desk display
 CONTROL
 
 mkdir -p "$OUT_DIR"
-DEB="$OUT_DIR/${PKG}_${VERSION}_${ARCH}.deb"
+# Deliberately version-less. The setup page links to
+# /releases/latest/download/<exact name>, which cannot carry a version, and
+# the version is in the control file and on the release page regardless.
+DEB="$OUT_DIR/${PKG}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
 echo "$DEB"

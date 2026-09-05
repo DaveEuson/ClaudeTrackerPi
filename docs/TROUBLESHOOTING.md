@@ -63,6 +63,10 @@ Once the file checks out, add an exclusion under
 Exclude the installed copy at `%LOCALAPPDATA%\Programs\Yoyu` rather than your
 whole Downloads folder.
 
+None of this applies on Linux, which has no equivalent gate. There is a `.deb`
+and an AppImage on the release page if you want a packaged install rather than
+a loose binary.
+
 If you would rather not add an exclusion, there is nothing wrong with running
 the companion from source. It needs Python and two small libraries, and it is
 the same code:

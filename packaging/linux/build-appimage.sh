@@ -70,7 +70,8 @@ curl -fsSL -o "$TOOL" \
 chmod +x "$TOOL"
 
 mkdir -p "$OUT_DIR"
-OUT="$OUT_DIR/YoyuCompanion-${VERSION}-x86_64.AppImage"
+# Version-less for the same reason the .deb is: a stable download URL.
+OUT="$OUT_DIR/YoyuCompanion-x86_64.AppImage"
 # --appimage-extract-and-run because a CI container has no FUSE to mount with.
 ARCH=x86_64 VERSION="$VERSION" \
   "$TOOL" --appimage-extract-and-run "$APPDIR" "$OUT" >/dev/null
