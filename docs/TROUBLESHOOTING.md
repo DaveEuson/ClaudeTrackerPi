@@ -82,7 +82,7 @@ certificate from Apple and a Windows CA. It is not done yet.
 
 ---
 
-## The board says "login expired – re-pair"
+## The board says "login expired - re-pair"
 
 **What it means:** you're in paired mode, and the login stored on the board
 stopped working.
