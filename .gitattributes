@@ -1,0 +1,5 @@
+# Shell scripts run on Linux CI runners. A CRLF checkout makes bash fail with
+# "\r: command not found", which is a confusing way to find out about line
+# endings, so pin them regardless of anyone's core.autocrlf.
+*.sh text eol=lf
+*.desktop text eol=lf

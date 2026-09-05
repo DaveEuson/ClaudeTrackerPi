@@ -67,6 +67,102 @@ jobs:
           name: ${{ matrix.cli_asset }}
           path: companion/dist/${{ matrix.cli_asset }}
 
+      # Linux gets native packaging as well as the bare binary. Neither format
+      # meets a security gate the way an unsigned Windows or macOS build does,
+      # so this is the one platform where packaging is a straight win.
+      - name: Build the .deb and the AppImage
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          # A tag build names itself after the tag. A workflow_dispatch build
+          # has no tag, so it falls back to the firmware version, which is what
+          # the release would have been called anyway.
+          TAG="${GITHUB_REF#refs/tags/}"
+          case "$GITHUB_REF" in
+            refs/tags/*) VER="${TAG#v}" ;;
+            *) VER="$(sed -n 's/.*FW_VERSION = "\([0-9.]*\)".*/\1/p' \
+                        firmware/src/main.cpp | head -1)" ;;
+          esac
+          [ -n "$VER" ] || VER="0.0.0"
+          echo "Packaging version $VER"
+          # appstream so the build scripts can report what is wrong with the
+          # metadata; appimagetool only says that validation failed.
+          sudo apt-get install -y appstream >/dev/null 2>&1 || true
+          chmod +x packaging/linux/*.sh
+          packaging/linux/build-deb.sh "$VER" \
+            companion/dist/YoyuCompanion-linux \
+            companion/dist/YoyuCompanion-cli-linux \
+            companion/dist
+          packaging/linux/build-appimage.sh "$VER" \
+            companion/dist/YoyuCompanion-linux \
+            companion/dist
+          ls -l companion/dist
+      - name: Check the .deb is well formed and installs
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          DEB=$(ls companion/dist/*.deb)
+          sudo apt-get install -y lintian desktop-file-utils >/dev/null 2>&1 || true
+          # lintian is advisory here; a packaging warning should not fail a
+          # release, but it should be visible in the log. The two that remain
+          # are hardening-no-pie and no-manual-page, both inherent to a
+          # PyInstaller binary rather than anything this packaging chose.
+          lintian "$DEB" || true
+          # This is the part that matters: it has to actually install, put the
+          # binaries where the desktop entry says, and remove cleanly.
+          sudo dpkg -i "$DEB"
+          test -x /usr/bin/yoyu-companion
+          test -x /usr/bin/yoyu-companion-cli
+          test -f /usr/share/applications/yoyu-companion.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/yoyu-companion.png
+          test -f /usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml
+          appstreamcli validate --no-net \
+            /usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml
+          test -f /usr/share/doc/yoyu-companion/changelog.gz
+          desktop-file-validate /usr/share/applications/yoyu-companion.desktop
+          # A packaged copy must not offer to install itself somewhere else.
+          # Asserted against a real installed .deb, because the branch that
+          # decides this reads sys.executable and only a real install has the
+          # right one.
+          # Capture first, then inspect. Piping this straight into grep looks
+          # right and is not: the step runs under pipefail, and --install is
+          # meant to fail here, so the pipeline reports that failure however
+          # well grep did.
+          set +e
+          OUT=$(yoyu-companion-cli --install 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          [ "$RC" -ne 0 ] || { echo "::error::--install should have refused"; exit 1; }
+          echo "$OUT" | grep -q "package manager" \
+            || { echo "::error::refusal did not explain why"; exit 1; }
+          sudo dpkg -r yoyu-companion
+          test ! -e /usr/bin/yoyu-companion
+          test ! -e /usr/share/applications/yoyu-companion.desktop
+      - name: Check the AppImage is well formed
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          APP=$(ls companion/dist/*.AppImage)
+          cd "$(dirname "$APP")"
+          # No FUSE on a runner, so unpack it rather than mounting it. This
+          # still proves the payload, the desktop entry and the icon are all
+          # where the runtime expects them.
+          "./$(basename "$APP")" --appimage-extract >/dev/null
+          test -x squashfs-root/AppRun
+          test -x squashfs-root/usr/bin/yoyu-companion
+          test -f squashfs-root/yoyu-companion.desktop
+          test -f squashfs-root/yoyu-companion.png
+          desktop-file-validate squashfs-root/yoyu-companion.desktop
+          rm -rf squashfs-root
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: linux-packages
+          path: |
+            companion/dist/*.deb
+            companion/dist/*.AppImage
+
   # Flash images for the browser flasher (docs/ ESP Web Tools page).
   firmware:
     runs-on: ubuntu-latest
@@ -248,7 +344,9 @@ jobs:
                       yoyu-amoled-bootloader.bin yoyu-amoled-partitions.bin \
                       yoyu-amoled-boot_app0.bin yoyu-amoled-merged.bin \
                       YoyuCompanion-windows.exe YoyuCompanion-macos \
-                      YoyuCompanion-linux SHA256SUMS.txt; do
+                      YoyuCompanion-linux SHA256SUMS.txt \
+                      yoyu-companion_amd64.deb \
+                      YoyuCompanion-x86_64.AppImage; do
             if ! echo "$ASSETS" | grep -qx "$want"; then
               echo "::error::Release $TAG is missing asset: $want"
               MISSING=1

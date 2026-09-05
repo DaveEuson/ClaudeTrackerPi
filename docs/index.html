@@ -478,12 +478,31 @@
     <div class="step"><span class="num">4</span><h2 tabindex="-1">Feed it your usage</h2></div>
     <p>Run the little companion on the computer where you use Claude Code. It
       reads your existing login and sends usage to the board. No extra sign-in.
-      Download it and open it; there's no installer to run:</p>
+      Download it and open it; it runs straight away, and can install itself
+      afterwards if you want it to start with your computer:</p>
     <div class="btnrow">
       <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-windows.exe">Windows<small>.exe</small></a>
       <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-macos">macOS<small>Apple / Intel</small></a>
       <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-linux">Linux<small>x86-64</small></a>
     </div>
+    <details>
+      <summary>On Linux? There's a .deb and an AppImage too.</summary>
+      <p>The plain Linux download above is a single binary you can run from
+        anywhere. If you would rather it were a proper installed application,
+        with a menu entry and an icon, there are two packaged builds:</p>
+      <div class="btnrow">
+        <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/yoyu-companion_amd64.deb">Debian / Ubuntu<small>.deb</small></a>
+        <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-x86_64.AppImage">AppImage<small>any distro</small></a>
+      </div>
+      <p>Install the <code>.deb</code> with
+        <code>sudo apt install ./yoyu-companion_amd64.deb</code>. It gives you
+        <code>yoyu-companion</code> and <code>yoyu-companion-cli</code> on your
+        path. The AppImage needs no install at all: <code>chmod +x</code> it
+        and run it.</p>
+      <p class="muted">Both are built on Ubuntu 24.04, so they want a glibc of
+        roughly that vintage. On something older, run the companion from
+        source instead.</p>
+    </details>
     <details>
       <summary>Windows says &ldquo;protected your PC&rdquo;? macOS won't open it?</summary>
       <p>Expected. The companion isn't code-signed yet, so both systems warn

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata. This is what a software centre reads to show the app
+     with a name, a description and an icon instead of a bare package name. -->
+<component type="desktop-application">
+  <id>io.github.daveeuson.YoyuCompanion</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Yoyu Companion</name>
+  <summary>Feed your Claude Code usage to a Yoyu board</summary>
+  <!-- developer_name rather than the newer <developer><name> element: the
+       appstreamcli bundled inside appimagetool is older than the one on the
+       build runner, and rejects the 1.0 syntax. -->
+  <developer_name>Dave Euson</developer_name>
+  <description>
+    <p>
+      Yoyu is a small ESP32 desk display that shows how much of your Claude
+      Code usage window is left, so you can see it without breaking off what
+      you are doing to go and check.
+    </p>
+    <p>
+      This is the companion that runs on your computer. It reads your usage
+      and pushes it to the board over your network, which means the board
+      never needs your Claude login of its own.
+    </p>
+    <p>
+      It sits in the system tray. There is also a headless command-line
+      version for servers and for running under a scheduler.
+    </p>
+  </description>
+  <launchable type="desktop-id">yoyu-companion.desktop</launchable>
+  <url type="homepage">https://github.com/DaveEuson/Yoyu</url>
+  <url type="bugtracker">https://github.com/DaveEuson/Yoyu/issues</url>
+  <url type="help">https://github.com/DaveEuson/Yoyu/blob/main/docs/TROUBLESHOOTING.md</url>
+  <provides>
+    <binary>yoyu-companion</binary>
+    <binary>yoyu-companion-cli</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <!-- @VERSION@ and @DATE@ are filled in by the build scripts, so this cannot
+       fall behind the release it ships in. -->
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>
