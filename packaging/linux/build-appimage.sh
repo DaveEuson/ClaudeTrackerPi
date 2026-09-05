@@ -29,15 +29,19 @@ install -d -m 0755 "$APPDIR/usr/share/applications"
 install -m 0644 "$HERE/yoyu-companion.desktop" \
         "$APPDIR/usr/share/applications/$PKG.desktop"
 
+# The file has to be named after the component id. The spec has said so since
+# reverse-DNS ids replaced the old foo.desktop ones, and the appstreamcli
+# bundled inside appimagetool is old enough to insist on it.
+CID="io.github.daveeuson.YoyuCompanion"
 install -d -m 0755 "$APPDIR/usr/share/metainfo"
+META="$APPDIR/usr/share/metainfo/$CID.appdata.xml"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" \
-    "$HERE/yoyu-companion.metainfo.xml" \
-    > "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
-chmod 0644 "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
-# appimagetool validates this and reports only that it failed, not why, so
+    "$HERE/yoyu-companion.metainfo.xml" > "$META"
+chmod 0644 "$META"
+# appimagetool validates this and reports only that it failed, never why, so
 # get the actual complaint out of appstreamcli while it is still visible.
 if command -v appstreamcli >/dev/null 2>&1; then
-  appstreamcli validate --no-net "$APPDIR/usr/share/metainfo/$PKG.appdata.xml" || true
+  appstreamcli validate --no-net "$META" || true
 fi
 
 ICON_TMP="$(mktemp -d)"

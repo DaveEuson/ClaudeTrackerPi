@@ -115,7 +115,9 @@ jobs:
           test -x /usr/bin/yoyu-companion-cli
           test -f /usr/share/applications/yoyu-companion.desktop
           test -f /usr/share/icons/hicolor/256x256/apps/yoyu-companion.png
-          test -f /usr/share/metainfo/yoyu-companion.metainfo.xml
+          test -f /usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml
+          appstreamcli validate --no-net \
+            /usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml
           test -f /usr/share/doc/yoyu-companion/changelog.gz
           desktop-file-validate /usr/share/applications/yoyu-companion.desktop
           # A packaged copy must not offer to install itself somewhere else.

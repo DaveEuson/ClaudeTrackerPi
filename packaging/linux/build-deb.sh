@@ -46,8 +46,8 @@ cp "$HERE/../../LICENSE" "$ROOT/usr/share/doc/$PKG/copyright" 2>/dev/null || tru
 install -d -m 0755 "$ROOT/usr/share/metainfo"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" \
     "$HERE/yoyu-companion.metainfo.xml" \
-    > "$ROOT/usr/share/metainfo/$PKG.metainfo.xml"
-chmod 0644 "$ROOT/usr/share/metainfo/$PKG.metainfo.xml"
+    > "$ROOT/usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml"
+chmod 0644 "$ROOT/usr/share/metainfo/io.github.daveeuson.YoyuCompanion.metainfo.xml"
 
 # A changelog is required, not decorative: lintian errors without one, and
 # apt-listchanges shows it before an upgrade. The detail lives in the GitHub
