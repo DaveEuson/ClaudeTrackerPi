@@ -30,8 +30,15 @@ install -m 0644 "$HERE/yoyu-companion.desktop" \
         "$APPDIR/usr/share/applications/$PKG.desktop"
 
 install -d -m 0755 "$APPDIR/usr/share/metainfo"
-install -m 0644 "$HERE/yoyu-companion.metainfo.xml" \
-        "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
+sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" \
+    "$HERE/yoyu-companion.metainfo.xml" \
+    > "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
+chmod 0644 "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
+# appimagetool validates this and reports only that it failed, not why, so
+# get the actual complaint out of appstreamcli while it is still visible.
+if command -v appstreamcli >/dev/null 2>&1; then
+  appstreamcli validate --no-net "$APPDIR/usr/share/metainfo/$PKG.appdata.xml" || true
+fi
 
 ICON_TMP="$(mktemp -d)"
 python3 "$HERE/make-icons.py" "$ICON_TMP" >/dev/null

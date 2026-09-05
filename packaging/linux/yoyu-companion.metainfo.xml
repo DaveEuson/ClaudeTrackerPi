@@ -7,9 +7,10 @@
   <project_license>MIT</project_license>
   <name>Yoyu Companion</name>
   <summary>Feed your Claude Code usage to a Yoyu board</summary>
-  <developer id="io.github.daveeuson">
-    <name>Dave Euson</name>
-  </developer>
+  <!-- developer_name rather than the newer <developer><name> element: the
+       appstreamcli bundled inside appimagetool is older than the one on the
+       build runner, and rejects the 1.0 syntax. -->
+  <developer_name>Dave Euson</developer_name>
   <description>
     <p>
       Yoyu is a small ESP32 desk display that shows how much of your Claude
@@ -38,4 +39,9 @@
     <category>Utility</category>
   </categories>
   <content_rating type="oars-1.1"/>
+  <!-- @VERSION@ and @DATE@ are filled in by the build scripts, so this cannot
+       fall behind the release it ships in. -->
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
 </component>

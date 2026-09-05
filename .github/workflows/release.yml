@@ -85,6 +85,9 @@ jobs:
           esac
           [ -n "$VER" ] || VER="0.0.0"
           echo "Packaging version $VER"
+          # appstream so the build scripts can report what is wrong with the
+          # metadata; appimagetool only says that validation failed.
+          sudo apt-get install -y appstream >/dev/null 2>&1 || true
           chmod +x packaging/linux/*.sh
           packaging/linux/build-deb.sh "$VER" \
             companion/dist/YoyuCompanion-linux \
