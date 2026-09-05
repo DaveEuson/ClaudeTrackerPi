@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Yoyu Companion
+GenericName=Claude usage feeder
+Comment=Feed your Claude Code usage to a Yoyu board
+Exec=yoyu-companion
+Icon=yoyu-companion
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=claude;usage;tracker;yoyu;
+StartupNotify=false

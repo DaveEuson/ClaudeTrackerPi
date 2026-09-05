@@ -911,5 +911,86 @@ class InstallTests(_QuietTest):
         self.assertIsNone(companion.sweep_stale_install())
 
 
+class PackagedInstallTests(_QuietTest):
+    """A copy from apt must not be managed by this program.
+
+    Without this, apt-installing the companion left the tray still offering
+    "Install on this computer", which would copy /usr/bin's binary into
+    ~/.local and leave two of them, with the package manager updating only
+    the one you had stopped using.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._frozen = getattr(sys, "frozen", False)
+        self._exe = sys.executable
+        self._plat = companion.sys.platform
+        self.addCleanup(self._restore)
+        self.addCleanup(os.environ.pop, "APPIMAGE", None)
+
+    def _restore(self):
+        if self._frozen:
+            sys.frozen = self._frozen
+        elif hasattr(sys, "frozen"):
+            del sys.frozen
+        sys.executable = self._exe
+
+    def _pretend(self, path):
+        sys.frozen = True
+        sys.executable = path
+
+    def test_usr_bin_is_a_package(self):
+        self._pretend("/usr/bin/yoyu-companion")
+        if companion.sys.platform == "win32":
+            self.skipTest("prefix test is for the platforms that have them")
+        self.assertTrue(companion.packaged_install())
+        self.assertTrue(companion.is_installed())
+        self.assertTrue(companion.running_from_install())
+
+    def test_a_downloaded_binary_is_not_a_package(self):
+        self._pretend(os.path.join(tempfile.gettempdir(), "YoyuCompanion"))
+        self.assertFalse(companion.packaged_install())
+
+    def test_a_path_merely_starting_with_usr_is_not_a_package(self):
+        # /usrlocal/... shares a prefix with /usr but is not inside it. A
+        # startswith() without the separator would call this a package.
+        self._pretend("/usrlocal/yoyu-companion")
+        self.assertFalse(companion.packaged_install())
+
+    def test_running_from_source_is_never_a_package(self):
+        if hasattr(sys, "frozen"):
+            del sys.frozen
+        sys.executable = "/usr/bin/python3"
+        self.assertFalse(companion.packaged_install())
+
+    def test_install_refuses_to_copy_a_packaged_build(self):
+        self._pretend("/usr/bin/yoyu-companion")
+        if companion.sys.platform == "win32":
+            self.skipTest("prefix test is for the platforms that have them")
+        with self.assertRaises(RuntimeError) as cm:
+            companion.install_app()
+        self.assertIn("package manager", str(cm.exception))
+
+    def test_appimage_installs_the_appimage_not_the_mount(self):
+        # Inside an AppImage, sys.executable points into a temporary mount
+        # that stops existing when the app quits. $APPIMAGE is the real file.
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        real = os.path.join(d, "YoyuCompanion.AppImage")
+        with open(real, "wb") as fh:
+            fh.write(b"x")
+        os.environ["APPIMAGE"] = real
+        self._pretend("/tmp/.mount_abc123/usr/bin/yoyu-companion")
+        self.assertEqual(companion.appimage_path(), os.path.abspath(real))
+        self.assertEqual(companion.self_path(), os.path.abspath(real))
+
+    def test_appimage_var_pointing_at_nothing_is_ignored(self):
+        os.environ["APPIMAGE"] = "/nowhere/does/this/exist.AppImage"
+        self._pretend("/tmp/.mount_abc/usr/bin/yoyu-companion")
+        self.assertEqual(companion.appimage_path(), "")
+        self.assertEqual(companion.self_path(),
+                         os.path.abspath(sys.executable))
+
+
 if __name__ == "__main__":
     unittest.main()

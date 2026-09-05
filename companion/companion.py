@@ -1171,6 +1171,39 @@ INSTALLED_MARKER = os.path.expanduser("~/.claudetracker-companion-installed")
 APP_NAME = "Yoyu Companion"
 
 
+# Directories a distro package owns. A copy running from one of these was
+# put there by apt/dnf/pacman, not by --install, so this program must not
+# try to manage it: the package manager will overwrite or remove it, and a
+# second copy under ~/.local would then shadow the packaged one confusingly.
+PACKAGE_PREFIXES = ("/usr/bin", "/usr/local/bin", "/usr/lib", "/opt", "/snap")
+
+
+def packaged_install():
+    """True when this copy came from a package manager rather than --install."""
+    if sys.platform == "win32" or not getattr(sys, "frozen", False):
+        return False
+    exe = os.path.abspath(sys.executable)
+    return any(exe == pre or exe.startswith(pre + os.sep)
+               for pre in PACKAGE_PREFIXES)
+
+
+def appimage_path():
+    """The .AppImage file itself, when running from one.
+
+    An AppImage unpacks to a temporary mount and runs from there, so
+    sys.executable points at a path that stops existing the moment the app
+    quits. The runtime puts the real file in $APPIMAGE, and that is the thing
+    worth copying or pointing a login item at.
+    """
+    p = os.environ.get("APPIMAGE") or ""
+    return os.path.abspath(p) if p and os.path.isfile(p) else ""
+
+
+def self_path():
+    """The file to copy or relaunch when this program installs itself."""
+    return appimage_path() or os.path.abspath(sys.executable)
+
+
 def install_dir():
     """Where the app lives once installed.
 
@@ -1192,7 +1225,13 @@ def installed_exe():
 
 
 def is_installed():
-    return os.path.isfile(installed_exe())
+    """Whether a stable copy exists, by either route.
+
+    A packaged copy counts. Without that, apt-installing the companion would
+    leave the tray still offering "Install on this computer", which would copy
+    /usr/bin's binary into ~/.local and leave two of them.
+    """
+    return packaged_install() or os.path.isfile(installed_exe())
 
 
 def sweep_stale_install():
@@ -1214,6 +1253,8 @@ def sweep_stale_install():
 
 
 def running_from_install():
+    if packaged_install():
+        return True
     return (getattr(sys, "frozen", False)
             and os.path.abspath(sys.executable) == installed_exe())
 
@@ -1227,10 +1268,12 @@ def _launch_argv():
     registered *that* path, and emptying Downloads silently broke start-up
     with nothing to see and nothing to fix.
     """
-    if is_installed():
+    if packaged_install():
+        return [os.path.abspath(sys.executable)]
+    if os.path.isfile(installed_exe()):
         return [installed_exe()]
     if getattr(sys, "frozen", False):
-        return [os.path.abspath(sys.executable)]
+        return [self_path()]
     return [sys.executable or "python3", os.path.abspath(__file__)]
 
 
@@ -1268,8 +1311,15 @@ def install_app(startup=True):
             "Running from source, so there is no single file to install. "
             "Use --startup on its own to add the login item, pointing at this "
             "checkout.")
+    if packaged_install():
+        raise RuntimeError(
+            "This copy was installed by your package manager (%s). Copying it "
+            "somewhere else would leave two, and the package manager would "
+            "keep updating the one you stopped using. Use --startup on its own "
+            "if you want it to start at login."
+            % os.path.abspath(sys.executable))
     done = []
-    src = os.path.abspath(sys.executable)
+    src = self_path()
     dst = installed_exe()
     os.makedirs(install_dir(), exist_ok=True)
     if os.path.abspath(src) != dst:

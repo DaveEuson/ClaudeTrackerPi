@@ -67,6 +67,62 @@ jobs:
           name: ${{ matrix.cli_asset }}
           path: companion/dist/${{ matrix.cli_asset }}
 
+      # Linux gets native packaging as well as the bare binary. Neither format
+      # meets a security gate the way an unsigned Windows or macOS build does,
+      # so this is the one platform where packaging is a straight win.
+      - name: Build the .deb and the AppImage
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          # A tag build names itself after the tag. A workflow_dispatch build
+          # has no tag, so it falls back to the firmware version, which is what
+          # the release would have been called anyway.
+          TAG="${GITHUB_REF#refs/tags/}"
+          case "$GITHUB_REF" in
+            refs/tags/*) VER="${TAG#v}" ;;
+            *) VER="$(sed -n 's/.*FW_VERSION = "\([0-9.]*\)".*/\1/p' \
+                        firmware/src/main.cpp | head -1)" ;;
+          esac
+          [ -n "$VER" ] || VER="0.0.0"
+          echo "Packaging version $VER"
+          chmod +x packaging/linux/*.sh
+          packaging/linux/build-deb.sh "$VER" \
+            companion/dist/YoyuCompanion-linux \
+            companion/dist/YoyuCompanion-cli-linux \
+            companion/dist
+          packaging/linux/build-appimage.sh "$VER" \
+            companion/dist/YoyuCompanion-linux \
+            companion/dist
+          ls -l companion/dist
+      - name: Check the .deb is well formed and installs
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          DEB=$(ls companion/dist/*.deb)
+          # lintian is advisory here; a packaging warning should not fail a
+          # release, but it should be visible in the log.
+          sudo apt-get install -y lintian >/dev/null 2>&1 || true
+          lintian "$DEB" || true
+          # This is the part that matters: it has to actually install, put the
+          # binaries where the desktop entry says, and remove cleanly.
+          sudo dpkg -i "$DEB"
+          test -x /usr/bin/yoyu-companion
+          test -x /usr/bin/yoyu-companion-cli
+          test -f /usr/share/applications/yoyu-companion.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/yoyu-companion.png
+          desktop-file-validate /usr/share/applications/yoyu-companion.desktop
+          # A packaged copy must not offer to install itself somewhere else.
+          yoyu-companion-cli --install && { echo "::error::--install should have refused"; exit 1; } || true
+          sudo dpkg -r yoyu-companion
+          test ! -e /usr/bin/yoyu-companion
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: linux-packages
+          path: |
+            companion/dist/*.deb
+            companion/dist/*.AppImage
+
   # Flash images for the browser flasher (docs/ ESP Web Tools page).
   firmware:
     runs-on: ubuntu-latest
@@ -248,7 +304,9 @@ jobs:
                       yoyu-amoled-bootloader.bin yoyu-amoled-partitions.bin \
                       yoyu-amoled-boot_app0.bin yoyu-amoled-merged.bin \
                       YoyuCompanion-windows.exe YoyuCompanion-macos \
-                      YoyuCompanion-linux SHA256SUMS.txt; do
+                      YoyuCompanion-linux SHA256SUMS.txt \
+                      "yoyu-companion_${TAG#v}_amd64.deb" \
+                      "YoyuCompanion-${TAG#v}-x86_64.AppImage"; do
             if ! echo "$ASSETS" | grep -qx "$want"; then
               echo "::error::Release $TAG is missing asset: $want"
               MISSING=1
