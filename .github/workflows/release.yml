@@ -124,11 +124,17 @@ jobs:
           # Asserted against a real installed .deb, because the branch that
           # decides this reads sys.executable and only a real install has the
           # right one.
-          if yoyu-companion-cli --install; then
-            echo "::error::--install should have refused inside a package"
-            exit 1
-          fi
-          yoyu-companion-cli --install 2>&1 | grep -q "package manager" \
+          # Capture first, then inspect. Piping this straight into grep looks
+          # right and is not: the step runs under pipefail, and --install is
+          # meant to fail here, so the pipeline reports that failure however
+          # well grep did.
+          set +e
+          OUT=$(yoyu-companion-cli --install 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          [ "$RC" -ne 0 ] || { echo "::error::--install should have refused"; exit 1; }
+          echo "$OUT" | grep -q "package manager" \
             || { echo "::error::refusal did not explain why"; exit 1; }
           sudo dpkg -r yoyu-companion
           test ! -e /usr/bin/yoyu-companion

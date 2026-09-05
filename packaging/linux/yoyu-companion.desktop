@@ -6,6 +6,6 @@ Comment=Feed your Claude Code usage to a Yoyu board
 Exec=yoyu-companion
 Icon=yoyu-companion
 Terminal=false
-Categories=Utility;Monitor;
+Categories=Utility;System;Monitor;
 Keywords=claude;usage;tracker;yoyu;
 StartupNotify=false
