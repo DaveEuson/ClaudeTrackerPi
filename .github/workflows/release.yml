@@ -99,9 +99,11 @@ jobs:
         shell: bash
         run: |
           DEB=$(ls companion/dist/*.deb)
+          sudo apt-get install -y lintian desktop-file-utils >/dev/null 2>&1 || true
           # lintian is advisory here; a packaging warning should not fail a
-          # release, but it should be visible in the log.
-          sudo apt-get install -y lintian >/dev/null 2>&1 || true
+          # release, but it should be visible in the log. The two that remain
+          # are hardening-no-pie and no-manual-page, both inherent to a
+          # PyInstaller binary rather than anything this packaging chose.
           lintian "$DEB" || true
           # This is the part that matters: it has to actually install, put the
           # binaries where the desktop entry says, and remove cleanly.
@@ -110,11 +112,38 @@ jobs:
           test -x /usr/bin/yoyu-companion-cli
           test -f /usr/share/applications/yoyu-companion.desktop
           test -f /usr/share/icons/hicolor/256x256/apps/yoyu-companion.png
+          test -f /usr/share/metainfo/yoyu-companion.metainfo.xml
+          test -f /usr/share/doc/yoyu-companion/changelog.gz
           desktop-file-validate /usr/share/applications/yoyu-companion.desktop
           # A packaged copy must not offer to install itself somewhere else.
-          yoyu-companion-cli --install && { echo "::error::--install should have refused"; exit 1; } || true
+          # Asserted against a real installed .deb, because the branch that
+          # decides this reads sys.executable and only a real install has the
+          # right one.
+          if yoyu-companion-cli --install; then
+            echo "::error::--install should have refused inside a package"
+            exit 1
+          fi
+          yoyu-companion-cli --install 2>&1 | grep -q "package manager" \
+            || { echo "::error::refusal did not explain why"; exit 1; }
           sudo dpkg -r yoyu-companion
           test ! -e /usr/bin/yoyu-companion
+          test ! -e /usr/share/applications/yoyu-companion.desktop
+      - name: Check the AppImage is well formed
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          APP=$(ls companion/dist/*.AppImage)
+          cd "$(dirname "$APP")"
+          # No FUSE on a runner, so unpack it rather than mounting it. This
+          # still proves the payload, the desktop entry and the icon are all
+          # where the runtime expects them.
+          "./$(basename "$APP")" --appimage-extract >/dev/null
+          test -x squashfs-root/AppRun
+          test -x squashfs-root/usr/bin/yoyu-companion
+          test -f squashfs-root/yoyu-companion.desktop
+          test -f squashfs-root/yoyu-companion.png
+          desktop-file-validate squashfs-root/yoyu-companion.desktop
+          rm -rf squashfs-root
       - uses: actions/upload-artifact@v7
         if: matrix.os == 'ubuntu-latest'
         with:

@@ -41,6 +41,26 @@ rm -rf "$ICON_TMP"
 
 cp "$HERE/../../LICENSE" "$ROOT/usr/share/doc/$PKG/copyright" 2>/dev/null || true
 
+# AppStream metadata, so a software centre shows a name and a description
+# rather than a bare package id.
+install -d -m 0755 "$ROOT/usr/share/metainfo"
+install -m 0644 "$HERE/yoyu-companion.metainfo.xml" \
+        "$ROOT/usr/share/metainfo/$PKG.metainfo.xml"
+
+# A changelog is required, not decorative: lintian errors without one, and
+# apt-listchanges shows it before an upgrade. The detail lives in the GitHub
+# releases, so this points there rather than duplicating it badly.
+cat > "$ROOT/usr/share/doc/$PKG/changelog" <<CHANGELOG
+$PKG ($VERSION) stable; urgency=medium
+
+  * Release $VERSION. Release notes:
+    https://github.com/DaveEuson/Yoyu/releases/tag/v$VERSION
+
+ -- Dave Euson <daveeuson@gmail.com>  $(date -R)
+CHANGELOG
+gzip -9n "$ROOT/usr/share/doc/$PKG/changelog"
+chmod 0644 "$ROOT/usr/share/doc/$PKG/changelog.gz"
+
 # Size in KiB, which is what dpkg wants and apt shows before installing.
 SIZE="$(du -sk "$ROOT/usr" | cut -f1)"
 

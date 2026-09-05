@@ -29,6 +29,10 @@ install -d -m 0755 "$APPDIR/usr/share/applications"
 install -m 0644 "$HERE/yoyu-companion.desktop" \
         "$APPDIR/usr/share/applications/$PKG.desktop"
 
+install -d -m 0755 "$APPDIR/usr/share/metainfo"
+install -m 0644 "$HERE/yoyu-companion.metainfo.xml" \
+        "$APPDIR/usr/share/metainfo/$PKG.appdata.xml"
+
 ICON_TMP="$(mktemp -d)"
 python3 "$HERE/make-icons.py" "$ICON_TMP" >/dev/null
 install -m 0644 "$ICON_TMP/yoyu-companion-256.png" "$APPDIR/$PKG.png"
