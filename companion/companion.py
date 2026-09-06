@@ -964,6 +964,63 @@ def resolve_targets(saved, rescan=False):
     return urls
 
 
+# How often a running companion looks for boards it has not seen before.
+# Long, because discovery sweeps the local range and the answer changes only
+# when someone plugs in hardware.
+RESCAN_EVERY_DEFAULT = 900
+
+
+def rescan_interval(cfg_value, arg=None, pinned=False):
+    """Seconds between sweeps for new boards. 0 means never look.
+
+    Pulled out of main() so the awkward part is testable. `or` would be wrong
+    for the fallback: 0 is the value that means "stop looking", and it is
+    falsy, so it would read as "not set" and be handed the default instead,
+    which is the opposite of what was asked for.
+    """
+    if pinned:
+        # --pi names the boards to feed. Going looking for others and quietly
+        # feeding them is not what was asked for.
+        return 0
+    if arg is not None:
+        return max(0, int(arg))
+    if cfg_value is None:
+        return RESCAN_EVERY_DEFAULT
+    try:
+        return max(0, int(cfg_value))
+    except (TypeError, ValueError):
+        return RESCAN_EVERY_DEFAULT
+
+
+def refresh_targets(saved):
+    """Look again, and fold anything new into the list of boards to feed.
+
+    resolve_targets() returns as soon as one saved board answers, which is
+    right for a stale address and wrong for a new one: a board that answers
+    says nothing about whether a second has appeared next to it. That left
+    plugging in another board doing nothing at all until you knew --rescan
+    existed.
+
+    Returns (targets, added, dropped): the new comma-joined list, the board
+    dicts for anything new, and the addresses that have stopped answering.
+    """
+    saved_list = [t.strip() for t in str(saved or "").split(",") if t.strip()]
+    found = discover_all(quiet=True)
+    if not found:
+        # Finding nothing means the network is unhappy, not that every board
+        # has been thrown away. A blip must never empty the config.
+        return ",".join(saved_list), [], []
+    found_urls = [b["url"] for b in found]
+    # Something saved that this sweep missed but which still answers stays.
+    # discover_all only covers this machine's own subnets, so a board reached
+    # across a router is invisible to it and would otherwise be dropped.
+    still_up = [u for u in saved_list if u not in found_urls and _probe(u)]
+    targets = found_urls + still_up
+    added = [b for b in found if b["url"] not in saved_list]
+    dropped = [u for u in saved_list if u not in targets]
+    return ",".join(targets), added, dropped
+
+
 def disconnect_board(url, token=""):
     """Clear a board's Claude login, and forget our key for it.
 
@@ -1926,6 +1983,10 @@ def main():
     ap.add_argument("--rescan", action="store_true",
                     help="look for boards again even if the saved ones answer "
                          "-- use after adding a second board")
+    ap.add_argument("--rescan-every", type=int, default=None, metavar="SECONDS",
+                    help="how often a running companion looks for boards it "
+                         "has not seen (default %d, 0 to never look again)"
+                         % RESCAN_EVERY_DEFAULT)
     ap.add_argument("--pi", default=None,
                     help="tracker URL(s), comma-separated for multiple "
                          "devices (auto-discovered if omitted)")
@@ -2082,8 +2143,31 @@ def main():
     # resets us to the normal cadence.
     base = max(30, cfg["interval"])
     rl_backoff = 0
+    # Pinned targets are not ours to change: someone who passed --pi has said
+    # which board they mean, and quietly feeding a different one would be
+    # doing something they did not ask for.
+    rescan_every = rescan_interval(cfg.get("rescan_secs"),
+                                   args.rescan_every, pinned=bool(args.pi))
+    last_scan = time.time()
     while True:
         time.sleep(base + rl_backoff)
+        if rescan_every and time.time() - last_scan >= rescan_every:
+            last_scan = time.time()
+            try:
+                fresh, added, dropped = refresh_targets(cfg["pi"])
+            except Exception as exc:  # noqa: BLE001 - a failed sweep is not fatal
+                print("(couldn't look for boards: %s)" % exc, file=sys.stderr)
+                added = dropped = []
+            else:
+                if added or dropped:
+                    cfg["pi"] = fresh
+                    save_pi(fresh)
+                for b in added:
+                    print("Found another board, now feeding it too: "
+                          + describe_board(b))
+                for url in dropped:
+                    print("%s stopped answering, so it is out of the list "
+                          "until it comes back." % url)
         _ok, retry_after, rate_limited = run_once(cfg)
         if rate_limited:
             rl_backoff = min(1800, max(retry_after, rl_backoff * 2 or base))

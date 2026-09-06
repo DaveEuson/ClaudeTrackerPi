@@ -277,8 +277,14 @@ Update the companion, then tell it to look again:
 python companion.py --rescan
 ```
 
-From the tray, use **Look for boards**. Nothing rescans on its own once a
-saved board answers, which is right until the day you plug in a second one.
+From the tray, use **Look for boards**.
+
+From v1.12.0 you should not need either. A running companion sweeps for boards
+it has not seen every 15 minutes and adopts anything new, because a saved board
+answering tells you nothing about whether a second has appeared beside it. A
+sweep that finds nothing is ignored rather than saved, so a Wi-Fi blip cannot
+empty the list. Set `rescan_secs` in the config to change the interval, or to
+`0` to turn it off.
 
 Both boards are then kept in the config and fed from a single read of your
 usage. The numbers are the same whoever displays them, and polling once per

@@ -366,6 +366,25 @@ class EntryPointSweepTests(unittest.TestCase):
     def test_tray_entry_point_sweeps(self):
         self.assertIn("sweep_stale_autostart()", self._src("tray.py"))
 
+    def test_cli_entry_point_rescans_on_a_timer(self):
+        self.assertIn("refresh_targets(", self._src("companion.py"))
+
+    def test_tray_entry_point_rescans_on_a_timer(self):
+        # Same reasoning as the sweep above, and the same trap: the tray runs
+        # its own loop rather than the CLI's, so a periodic job added to one
+        # reaches the other only if somebody remembers. The tray is the build
+        # most people download, so it is the one that must not be forgotten.
+        src = self._src("tray.py")
+        self.assertIn("auto_rescan(icon)", src)
+        self.assertIn("RESCAN_EVERY_DEFAULT", src)
+
+    def test_tray_rescan_does_not_save_an_empty_sweep(self):
+        # discover_boards saves whatever it finds, and a sweep finds nothing
+        # when the network is unhappy as well as when the boards are gone.
+        # The periodic path must go through refresh_targets, which guards it.
+        src = self._src("tray.py")
+        self.assertIn("companion.refresh_targets(saved)", src)
+
 
 class LoginStateTests(unittest.TestCase):
     """The four situations that used to be one message.
@@ -990,6 +1009,133 @@ class PackagedInstallTests(_QuietTest):
         self.assertEqual(companion.appimage_path(), "")
         self.assertEqual(companion.self_path(),
                          os.path.abspath(sys.executable))
+
+
+class RefreshTargetsTests(_QuietTest):
+    """Picking up a board you plugged in after the companion started.
+
+    resolve_targets() stops as soon as one saved board answers, which is
+    right for a stale address and wrong for a new one. That left adding a
+    second board doing nothing until you knew --rescan existed.
+    """
+
+    A = "http://192.168.0.76:8080"
+    B = "http://192.168.0.77:8080"
+    C = "http://10.0.0.5:8080"
+
+    def _discovery(self, urls):
+        self._found = [{"url": u, "id": u[-6:], "board": "lcd2",
+                        "version": "1.11.0"} for u in urls]
+        orig = companion.discover_all
+        companion.discover_all = lambda *a, **k: list(self._found)
+        self.addCleanup(setattr, companion, "discover_all", orig)
+
+    def _reachable(self, urls):
+        orig = companion._probe
+        companion._probe = lambda u: u in urls
+        self.addCleanup(setattr, companion, "_probe", orig)
+
+    def test_a_new_board_is_picked_up(self):
+        self._discovery([self.A, self.B])
+        self._reachable([self.A, self.B])
+        targets, added, dropped = companion.refresh_targets(self.A)
+        self.assertEqual(targets, self.A + "," + self.B)
+        self.assertEqual([b["url"] for b in added], [self.B])
+        self.assertEqual(dropped, [])
+
+    def test_nothing_new_changes_nothing(self):
+        # No save, no log line. A quiet network should stay quiet.
+        self._discovery([self.A, self.B])
+        self._reachable([self.A, self.B])
+        targets, added, dropped = companion.refresh_targets(
+            self.A + "," + self.B)
+        self.assertEqual(targets, self.A + "," + self.B)
+        self.assertEqual(added, [])
+        self.assertEqual(dropped, [])
+
+    def test_a_failed_sweep_never_empties_the_config(self):
+        # Finding nothing means the network is unhappy, not that the boards
+        # have been thrown away. Dropping them here would stop the companion
+        # feeding anything until someone noticed.
+        self._discovery([])
+        self._reachable([])
+        targets, added, dropped = companion.refresh_targets(
+            self.A + "," + self.B)
+        self.assertEqual(targets, self.A + "," + self.B)
+        self.assertEqual(added, [])
+        self.assertEqual(dropped, [])
+
+    def test_a_board_off_the_local_subnet_is_kept(self):
+        # discover_all only sweeps this machine's own ranges, so a board
+        # reached across a router is invisible to it. It still answers, so
+        # it stays.
+        self._discovery([self.A])
+        self._reachable([self.A, self.C])
+        targets, added, dropped = companion.refresh_targets(
+            self.A + "," + self.C)
+        self.assertEqual(targets, self.A + "," + self.C)
+        self.assertEqual(dropped, [])
+
+    def test_a_board_that_stopped_answering_is_dropped(self):
+        # Safe to drop precisely because this now runs on a timer: when it
+        # comes back, the next sweep finds it again.
+        self._discovery([self.A])
+        self._reachable([self.A])
+        targets, added, dropped = companion.refresh_targets(
+            self.A + "," + self.B)
+        self.assertEqual(targets, self.A)
+        self.assertEqual(dropped, [self.B])
+
+    def test_a_board_that_moved_address_is_followed(self):
+        # DHCP hands it a new address. The old one stops answering and the
+        # new one is discovered, so the list follows it rather than keeping
+        # a dead entry forever.
+        self._discovery([self.B])
+        self._reachable([self.B])
+        targets, added, dropped = companion.refresh_targets(self.A)
+        self.assertEqual(targets, self.B)
+        self.assertEqual([b["url"] for b in added], [self.B])
+        self.assertEqual(dropped, [self.A])
+
+    def test_starting_from_nothing_saved(self):
+        self._discovery([self.A])
+        self._reachable([self.A])
+        targets, added, dropped = companion.refresh_targets("")
+        self.assertEqual(targets, self.A)
+        self.assertEqual([b["url"] for b in added], [self.A])
+
+
+class RescanIntervalTests(_QuietTest):
+    """0 has to mean "stop looking", not "I didn't say"."""
+
+    def test_unset_gets_the_default(self):
+        self.assertEqual(companion.rescan_interval(None),
+                         companion.RESCAN_EVERY_DEFAULT)
+
+    def test_zero_means_never(self):
+        # The bug this guards: `cfg.get(k) or DEFAULT` treats 0 as absent, so
+        # turning the sweep off would have turned it on at the default.
+        self.assertEqual(companion.rescan_interval(0), 0)
+
+    def test_a_number_is_honoured(self):
+        self.assertEqual(companion.rescan_interval(60), 60)
+
+    def test_the_flag_beats_the_config(self):
+        self.assertEqual(companion.rescan_interval(900, arg=0), 0)
+        self.assertEqual(companion.rescan_interval(900, arg=60), 60)
+
+    def test_pinned_targets_are_never_second_guessed(self):
+        # --pi says which board is meant. Finding others and feeding them is
+        # not what was asked for.
+        self.assertEqual(companion.rescan_interval(900, pinned=True), 0)
+        self.assertEqual(companion.rescan_interval(900, arg=60, pinned=True), 0)
+
+    def test_rubbish_falls_back_rather_than_crashing(self):
+        self.assertEqual(companion.rescan_interval("nonsense"),
+                         companion.RESCAN_EVERY_DEFAULT)
+
+    def test_negative_is_clamped_not_trusted(self):
+        self.assertEqual(companion.rescan_interval(-5), 0)
 
 
 if __name__ == "__main__":

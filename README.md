@@ -107,9 +107,11 @@ comes up as `yoyu-2.local`, and that assignment swaps when they reboot
 together. Each board prints its own permanent id at the bottom of the
 page it serves at its own address.
 
-If you add a second board later, run `--rescan` or use the tray's **Look for
-boards**. Nothing goes looking again on its own while a saved board is still
-answering.
+If you add a second board later you do not have to do anything. A running
+companion looks for boards it has not seen every 15 minutes, picks up anything
+new, and says so. `--rescan` and the tray's **Look for boards** still force it
+if you would rather not wait. Set `rescan_secs` in the config to change the
+interval, or to `0` to stop it looking.
 
 ## Turning it off again
 
