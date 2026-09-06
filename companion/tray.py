@@ -121,6 +121,52 @@ def discover_boards(icon):
         set_boards(icon, found)
     return found
 
+
+def rescan_secs():
+    """How often to look for new boards. 0 means never.
+
+    Same config key the CLI reads, so the setting means one thing rather than
+    two, and the documentation can describe it once.
+    """
+    try:
+        return companion.rescan_interval(
+            companion.load_config().get("rescan_secs"))
+    except Exception:  # noqa: BLE001 - a bad value must not stop the loop
+        return companion.RESCAN_EVERY_DEFAULT
+
+
+def auto_rescan(icon):
+    """Notice a board plugged in after we started, without being asked.
+
+    "Look for boards" in the menu still does this on demand. This exists so
+    that nobody has to know it does: adding a second board and having nothing
+    happen is a poor way to find out that a menu item was waiting for you.
+
+    Goes through refresh_targets rather than discover_boards because that one
+    saves whatever it finds, and a sweep finds nothing when the network is
+    unhappy as well as when the boards are gone. Writing that emptiness to the
+    config would stop the companion feeding anything at all.
+    """
+    saved = ",".join(b["url"] for b in state["boards"])
+    try:
+        fresh, added, dropped = companion.refresh_targets(saved)
+    except Exception:  # noqa: BLE001 - a failed sweep is not worth dying for
+        return
+    if not (added or dropped):
+        return
+    companion.save_pi(fresh)
+    known = {b["url"]: b for b in state["boards"]}
+    for b in added:
+        known[b["url"]] = b
+    set_boards(icon, [known[u] for u in fresh.split(",") if u in known])
+    if added:
+        names = ", ".join(board_label(b) for b in added)
+        state["status"] = "Found %s" % names
+        try:
+            icon.notify("Now feeding %s too." % names, companion.APP_NAME)
+        except Exception:  # noqa: BLE001 - not every backend has notify()
+            pass
+
 COLORS = {"green": (94, 170, 100), "amber": (230, 164, 23),
           "red": (221, 77, 77), "grey": (140, 140, 140)}
 
@@ -299,6 +345,7 @@ def refresh(icon):
 
 def worker(icon):
     rl_backoff = 0   # extra seconds added while Anthropic is rate-limiting us
+    last_scan = time.time()
     while True:
         if not state["feeding"]:
             state.update(color="grey", status="Paused")
@@ -314,6 +361,14 @@ def worker(icon):
                 time.sleep(15)
                 continue
         enrich_boards(icon)
+        # Long interval: this sweeps the local range, and the answer only
+        # changes when somebody plugs in hardware. Read every time round so
+        # the config can be edited without restarting, and so rescan_secs
+        # means the same thing here as it does to the CLI.
+        every = rescan_secs()
+        if every and time.time() - last_scan >= every:
+            last_scan = time.time()
+            auto_rescan(icon)
         urls = [b["url"] for b in state["boards"]]
         color, status, rate_limited = feed_once(urls)
         if color == "green":
