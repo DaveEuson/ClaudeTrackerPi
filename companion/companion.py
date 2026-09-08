@@ -922,7 +922,12 @@ def discover_all(port=8080, quiet=False):
             if info:
                 found.append({"url": futures[fut], "id": info.get("id"),
                               "board": info.get("board") or "board",
-                              "version": info.get("version") or "?"})
+                              "version": info.get("version") or "?",
+                              # Older firmware sends neither key. Absent means
+                              # "cannot tell", which is not the same as bad, so
+                              # it has to default to fine.
+                              "hw_ok": info.get("hw_ok", True),
+                              "hw_note": info.get("hw_note") or ""})
     def _octets(b):
         try:
             return [int(x) for x in
@@ -936,8 +941,46 @@ def discover_all(port=8080, quiet=False):
 
 
 def describe_board(b):
-    return "%s (%s, v%s) at %s" % (b["id"] or "unidentified", b["board"],
+    base = "%s (%s, v%s) at %s" % (b["id"] or "unidentified", b["board"],
                                    b["version"], b["url"])
+    return base if b.get("hw_ok", True) else base + "  [WRONG FIRMWARE]"
+
+
+def hardware_warning(b):
+    """The line to print when a board says it is running the wrong image.
+
+    Worth saying loudly and every time. A board in this state answers on the
+    network and looks healthy from here, while the person who owns it is
+    looking at a screen that never lit up and reasonably concluding the
+    hardware is dead.
+    """
+    if b.get("hw_ok", True):
+        return ""
+    note = b.get("hw_note") or "it is running firmware built for another board"
+    lines = [
+        "",
+        "  !! %s cannot drive its screen." % b["url"],
+        "     %s" % note,
+        "     It is on the network and otherwise fine. Re-flash it over USB",
+        "     from the setup page, picking the right board. An over-the-air",
+        "     update cannot fix this: it fetches the wrong board's image too.",
+    ]
+    return "\n".join(lines)
+
+
+def warn_about_hardware(targets):
+    """Say so, once at startup, if a board is running the wrong image.
+
+    One status call per board, at startup only. The alternative is checking on
+    every cycle, which would cost a request a minute forever to report
+    something that cannot change without somebody re-flashing the board.
+    """
+    for t in [x.strip() for x in str(targets or "").split(",") if x.strip()]:
+        info = _probe_info(t, timeout=3)
+        if info and not info.get("hw_ok", True):
+            print(hardware_warning({"url": t, "hw_ok": False,
+                                    "hw_note": info.get("hw_note") or ""}),
+                  file=sys.stderr)
 
 
 def resolve_targets(saved, rescan=False):
@@ -2088,6 +2131,7 @@ def main():
         ap.error("couldn't find a board on your network. Make sure it's "
                  "powered on and on the same Wi-Fi, or pass "
                  "--pi http://<its-address>:8080")
+    warn_about_hardware(cfg["pi"])
     migrate_topup_keys()
     # Before any early return below. Sitting further down meant --once never
     # reached it, so the 8MB copy an upgrade leaves behind survived every run
@@ -2165,6 +2209,8 @@ def main():
                 for b in added:
                     print("Found another board, now feeding it too: "
                           + describe_board(b))
+                    if not b.get("hw_ok", True):
+                        print(hardware_warning(b), file=sys.stderr)
                 for url in dropped:
                     print("%s stopped answering, so it is out of the list "
                           "until it comes back." % url)

@@ -25,6 +25,61 @@ When in doubt, use **push mode**: just run the companion with no arguments.
 
 ---
 
+## The board will not turn on, or the screen stays dark
+
+Check whether it is actually off before assuming it is dead. A board flashed
+with the other board's firmware boots normally, joins your Wi-Fi and answers
+everything asked of it, while driving a display that is not physically there.
+From across the desk that is indistinguishable from hardware that never
+powered up.
+
+Two signs it is running rather than dead:
+
+- **The LEDs on the back are lit.** That is power, not a display.
+- **It answers on the network.** From the computer the companion runs on:
+
+  ```
+  python companion/companion.py --rescan
+  ```
+
+  A board that shows up here is alive, whatever the screen is doing.
+
+If it answers, ask it directly. From v1.13.0 it will tell you outright:
+
+```
+curl -s http://<board-ip>:8080/api/status
+```
+
+Look for `hw_ok`. If it is `false`, `hw_note` says what is wrong, and the
+companion prints the same thing at startup and flags the board in the tray
+menu. Firmware older than v1.13.0 sends neither field, so a board that is
+silent on this may simply predate the check.
+
+### Fixing a board on the wrong firmware
+
+**An over-the-air update will not do it.** The running firmware decides which
+release asset to fetch, so a board that believes it is the other board keeps
+downloading the other board's image. It has to be re-flashed over USB.
+
+1. Plug the board into USB, using Chrome or Edge.
+2. Open the [setup page](https://daveeuson.github.io/Yoyu/).
+3. **In step 1, choose the board you actually have.** That choice picks the
+   image, and it is the whole reason this happens.
+4. Install.
+
+A fresh flash starts clean, so it will ask for Wi-Fi again and want pairing if
+you use self-hosted mode. The companion finds it again on its own once it is
+back on the network.
+
+### How to tell the two boards apart
+
+The 2" LCD board is the smaller rectangular one, 240×320. The AMOLED is 2.16"
+and square, 480×480. If you are unsure which a given board is, and it is on
+the network, `board` in `/api/status` reports what its firmware believes,
+and `id` is permanent and printed at the bottom of the page the board serves.
+
+---
+
 ## Windows or macOS blocks the companion download
 
 The companion is not code-signed, so every operating system treats it as an
@@ -257,8 +312,8 @@ The LCD board is unaffected; touch works there normally.
    Get the IP from your router's device list. Several boards go in as one
    comma-separated list, no spaces.
 
-**If it used to work and stopped**, the saved address has probably gone stale
-— a board that moved to a new IP, or a config written before the rename. From
+**If it used to work and stopped**, the saved address has probably gone stale:
+a board that moved to a new IP, or a config written before the rename. From
 v1.7.0 the companion notices that nothing it has saved answers any more and
 looks again by itself; before that it would keep pushing to the old address
 forever. `--rescan` forces it.

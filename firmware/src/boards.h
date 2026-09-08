@@ -53,6 +53,15 @@
 #define HAS_BATTERY_ADC   1
 #define VBAT_PIN          5      // via the onboard 200K/100K divider
 
+// The other board's fingerprint, for the wrong-firmware check in main.cpp.
+// Looking for the AXP2101 on the AMOLED's own I2C pins is a positive
+// identification rather than a guess: nothing on this board answers there,
+// so finding it means this firmware is running on the wrong hardware.
+#define OTHER_BOARD_SLUG  "amoled216"
+#define OTHER_I2C_SDA     15
+#define OTHER_I2C_SCL     14
+#define OTHER_I2C_ANCHOR  0x34   // AXP2101, on every AMOLED board
+
 // Frozen on purpose. Boards in the field fetch these exact names for OTA, so
 // renaming them to match the product would strand every one of them. A rename
 // needs its own transition (publish both names for several releases), not a
@@ -117,6 +126,15 @@
 #define HAS_BATTERY_ADC   0
 #define HAS_BATTERY_PMIC  1
 #define PMIC_ADDR         0x34   // AXP2101
+
+// The other board's fingerprint, for the wrong-firmware check in main.cpp.
+// The CST816D sits on pins this board does not use for I2C at all, so an
+// answer there is proof of the wrong hardware rather than an inference from
+// an empty bus.
+#define OTHER_BOARD_SLUG  "lcd2"
+#define OTHER_I2C_SDA     48
+#define OTHER_I2C_SCL     47
+#define OTHER_I2C_ANCHOR  0x15   // CST816D, the LCD board's only I2C device
 
 // An AMOLED has no such floor: an unlit pixel emits nothing, so the accents
 // run at full blast against true black and the first impression of the panel

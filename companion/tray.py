@@ -64,7 +64,39 @@ def _host(url):
 def board_label(b):
     """What to call a board in a menu. The id once the firmware offers one,
     since addresses move and mDNS names are handed out in boot order."""
-    return "%s · %s" % (b.get("board") or "board", b.get("id") or _host(b["url"]))
+    name = "%s · %s" % (b.get("board") or "board",
+                        b.get("id") or _host(b["url"]))
+    # A board on the wrong image answers everything and drives nothing, so the
+    # menu is one of the few places it can be told apart from a healthy one.
+    # ASCII on purpose: a warning sign is outside cp1252 and throws on a
+    # Windows console, and this string reaches one whenever the status is
+    # printed. The interpunct above is in cp1252, which is why it is safe.
+    return name if b.get("hw_ok", True) else name + " - WRONG FIRMWARE"
+
+
+_WARNED_WRONG_FW = set()
+
+
+def announce_wrong_firmware(icon, b):
+    """Tell someone their board is on the wrong image, once per board.
+
+    Once, because it cannot change without a re-flash, and a notification on
+    every cycle would train people to dismiss it. This is the case where the
+    tray earns its place: the board itself has no working screen to say it on.
+    """
+    key = b.get("id") or b.get("url")
+    if key in _WARNED_WRONG_FW:
+        return
+    _WARNED_WRONG_FW.add(key)
+    state["status"] = "%s: wrong firmware, re-flash over USB" % board_label(b)
+    try:
+        icon.notify(
+            "%s is running firmware for another board, so its screen stays "
+            "dark. Re-flash it over USB from the setup page and pick the "
+            "right board." % (b.get("id") or b.get("url")),
+            companion.APP_NAME)
+    except Exception:  # noqa: BLE001 - not every backend has notify()
+        pass
 
 
 def set_boards(icon, boards):
@@ -98,7 +130,14 @@ def enrich_boards(icon):
             b["id"] = info.get("id")
             b["board"] = info.get("board") or "board"
             b["version"] = info.get("version") or "?"
+            # Absent on every board built before this existed, and absent has
+            # to mean "fine": treating "cannot tell" as "broken" would accuse
+            # healthy hardware.
+            b["hw_ok"] = info.get("hw_ok", True)
+            b["hw_note"] = info.get("hw_note") or ""
             changed = True
+            if not b["hw_ok"]:
+                announce_wrong_firmware(icon, b)
         # The first board's character drives the tray icon. With two boards the
         # icon can only be one of them, and the first is the one every other
         # single-target action already uses.

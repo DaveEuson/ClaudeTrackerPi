@@ -378,6 +378,14 @@ class EntryPointSweepTests(unittest.TestCase):
         self.assertIn("auto_rescan(icon)", src)
         self.assertIn("RESCAN_EVERY_DEFAULT", src)
 
+    def test_both_entry_points_report_wrong_firmware(self):
+        # Third time this pattern has mattered. A board on the wrong image has
+        # no working screen, so the companion is the only thing that can say
+        # so, and saying it in only one of the two builds helps whichever half
+        # of people did not download that one.
+        self.assertIn("warn_about_hardware(", self._src("companion.py"))
+        self.assertIn("announce_wrong_firmware(", self._src("tray.py"))
+
     def test_tray_rescan_does_not_save_an_empty_sweep(self):
         # discover_boards saves whatever it finds, and a sweep finds nothing
         # when the network is unhappy as well as when the boards are gone.
@@ -1136,6 +1144,48 @@ class RescanIntervalTests(_QuietTest):
 
     def test_negative_is_clamped_not_trusted(self):
         self.assertEqual(companion.rescan_interval(-5), 0)
+
+
+class WrongFirmwareTests(_QuietTest):
+    """A board running the other board's image.
+
+    It boots, joins Wi-Fi and answers every request while driving a panel that
+    is not there, so from the network it looks perfectly healthy and from the
+    desk it looks like hardware that will not turn on. This happened to a real
+    board, and the screen is the one part that cannot report it.
+    """
+
+    GOOD = {"url": "http://10.0.0.1:8080", "id": "aaa", "board": "lcd2",
+            "version": "1.13.0", "hw_ok": True, "hw_note": ""}
+    BAD = {"url": "http://10.0.0.2:8080", "id": "bbb", "board": "amoled216",
+           "version": "1.13.0", "hw_ok": False,
+           "hw_note": "Wrong firmware: this is amoled216 firmware on lcd2 "
+                      "hardware."}
+
+    def test_a_healthy_board_says_nothing(self):
+        self.assertEqual(companion.hardware_warning(self.GOOD), "")
+        self.assertNotIn("WRONG", companion.describe_board(self.GOOD))
+
+    def test_a_wrong_board_is_flagged_in_its_description(self):
+        self.assertIn("WRONG FIRMWARE", companion.describe_board(self.BAD))
+
+    def test_the_warning_says_ota_will_not_fix_it(self):
+        # The trap: /update on such a board fetches the wrong image again,
+        # because the running firmware decides which asset to ask for. Anyone
+        # told only "it is running the wrong image" would reasonably try OTA
+        # first and conclude the board is dead when nothing changes.
+        w = companion.hardware_warning(self.BAD)
+        self.assertIn("USB", w)
+        self.assertIn("over-the-air", w)
+
+    def test_firmware_without_the_field_is_treated_as_fine(self):
+        # Every board in the field predates this. Absent means "cannot tell",
+        # which must not read as "broken", or the companion would accuse
+        # perfectly healthy boards on first run.
+        old = {"url": "http://10.0.0.3:8080", "id": "ccc", "board": "lcd2",
+               "version": "1.9.1"}
+        self.assertEqual(companion.hardware_warning(old), "")
+        self.assertNotIn("WRONG", companion.describe_board(old))
 
 
 if __name__ == "__main__":
