@@ -376,7 +376,7 @@ static_assert(sizeof(AP_PSK) - 1 >= 8,
               "AP_PSK must be 8+ chars or WiFi.softAP() fails and the setup "
               "hotspot never appears -- see v1.6.0");
 static const int   API_PORT = 8080;   // what the companion probes
-static const char *FW_VERSION = "1.12.0";
+static const char *FW_VERSION = "1.13.0";
 
 // Phase 2 — self-contained: poll Anthropic's usage endpoint directly, using an
 // OAuth login pasted once via /connect. Same contract the companion uses.
@@ -384,7 +384,7 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Yoyu/1.12.0";
+static const char *UA          = "Yoyu/1.13.0";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
     "https://api.github.com/repos/DaveEuson/Yoyu/releases/latest";
@@ -399,6 +399,12 @@ static const char *RELEASES_API =
 // that can no longer be reached any other way.
 static const char *APP_BIN_URL = GH_DL OTA_ASSET_PREFIX "-app.bin";
 static const char *APP_SIG_URL = GH_DL OTA_ASSET_PREFIX "-app.bin.sig";
+
+// Whether this firmware is running on the board it was built for. Set once at
+// boot by checkHardwareMatches(); declared here because /api/status publishes
+// it long before sensorsBegin() is defined.
+static bool hwOk = true;
+static char hwNote[120] = "";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 // How long a companion push keeps this board from polling for itself. Comfortably
 // longer than the companion's own 2-minute cadence, so an occasional slow cycle
@@ -2250,6 +2256,11 @@ static void handleStatus() {
   doc["version"] = FW_VERSION;
   doc["self_hosted"] = selfHosted;
   doc["board"] = BOARD_SLUG;          // which panel this build drives
+  // False means this firmware is on the wrong board: it runs, but it cannot
+  // drive the panel. A dark screen is indistinguishable from a dead device
+  // without this, and the companion says so on the strength of it.
+  doc["hw_ok"] = hwOk;
+  if (hwNote[0]) doc["hw_note"] = hwNote;
   doc["theme"] = THEME_NAMES[uiTheme < 0 ? 0 : uiTheme];
   doc["avatar"] = AVATAR_NAMES[uiAvatar];
   doc["plan"] = plan[0] ? plan : (const char *)nullptr;
@@ -4267,6 +4278,66 @@ static void i2cWrite(uint8_t addr, uint8_t reg, uint8_t val) {
   Wire.endTransmission();
 }
 
+// ------------------------------------------- wrong-firmware detection
+//
+// Both board images are validly signed, so the OTA signature check cannot tell
+// them apart, and picking the wrong board on the setup page flashes the wrong
+// one over USB. The result boots, joins Wi-Fi and serves this whole API while
+// driving a panel that is not there.
+//
+// That is the worst shape a fault can take: the screen is the one part that
+// cannot report the problem, and from across the room it looks like a board
+// that will not turn on. So it gets reported everywhere else instead -- on
+// serial, and in /api/status where the companion can find it.
+//
+// This runs only when nothing answered where this build expects its own
+// hardware, so a working board never executes any of it.
+
+static bool i2cPresent(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
+
+// Look for the OTHER board's bus, and the chip that is always on it.
+//
+// Deliberately a positive identification rather than an inference from our own
+// bus being empty. An empty bus can mean a dead touch controller, which one of
+// these boards is already known to have; finding the other board's power
+// management IC on pins this build does not otherwise use is not ambiguous.
+static bool otherBoardSignature() {
+  Wire.end();
+  Wire.begin(OTHER_I2C_SDA, OTHER_I2C_SCL, 100000);
+  bool found = i2cPresent(OTHER_I2C_ANCHOR);
+  Wire.end();
+  Wire.begin(I2C_SDA, I2C_SCL, 400000);      // put our own bus back
+  return found;
+}
+
+static void checkHardwareMatches(int devicesFound) {
+  if (devicesFound > 0) return;              // our own bus answered; nothing to do
+  if (otherBoardSignature()) {
+    hwOk = false;
+    snprintf(hwNote, sizeof(hwNote),
+             "Wrong firmware: this is " BOARD_SLUG " firmware on "
+             OTHER_BOARD_SLUG " hardware. Re-flash over USB from the setup "
+             "page, choosing the " OTHER_BOARD_SLUG " board.");
+    Serial.println(F("[hw] ------------------------------------------------"));
+    Serial.printf("[hw] %s\n", hwNote);
+    Serial.println(F("[hw] The screen cannot show this, which is why it is here."));
+    Serial.println(F("[hw] OTA will not fix it: this build fetches the other"));
+    Serial.println(F("[hw] board's image. It has to be re-flashed over USB."));
+    Serial.println(F("[hw] ------------------------------------------------"));
+    return;
+  }
+  // Nothing here, and no sign of the other board either. Less certain, so it
+  // is reported rather than asserted: a blank screen with this note means the
+  // wrong image is still the first thing to rule out.
+  snprintf(hwNote, sizeof(hwNote),
+           "No I2C devices on SDA=%d SCL=%d. If the screen is blank, check "
+           "this is " BOARD_SLUG " firmware.", I2C_SDA, I2C_SCL);
+  Serial.printf("[hw] %s\n", hwNote);
+}
+
 static void sensorsBegin() {
 #if TOUCH_RST != GFX_NOT_DEFINED
   // High-low-high, per the vendor sequence: the part wants to see a settled
@@ -4300,6 +4371,8 @@ static void sensorsBegin() {
   }
   Serial.printf("[i2c] %d device(s); expecting touch 0x%02X, imu 0x%02X/0x%02X\n",
                 found, TOUCH_ADDR, IMU_ADDR_A, IMU_ADDR_B);
+  // Before anything below tries to use a chip that may not be there.
+  checkHardwareMatches(found);
 #if HAS_BATTERY_PMIC
   // Enable the fuel gauge before the first read; a chip that has never been
   // asked to count reports zero, which looks exactly like a flat battery.
